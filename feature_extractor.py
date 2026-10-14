@@ -107,14 +107,26 @@ def validate_url(url: Any) -> Tuple[bool, str]:
     if len(cleaned) < 3:
         return False, "URL string is too short to be evaluated."
     
-    # Check that input contains either a period, colon, or localhost
-    if "." not in cleaned and ":" not in cleaned and "localhost" not in cleaned.lower():
-        return False, "Missing top-level domain, port, or hostname structure."
-    
     # Ensure URL does not contain unescaped whitespace
     if re.search(r'\s', cleaned):
         return False, "URL contains illegal whitespace characters."
-    
+
+    # Validate scheme if explicitly provided
+    scheme_match = re.match(r'^([a-zA-Z][a-zA-Z0-9+.-]*):', cleaned)
+    if scheme_match:
+        scheme = scheme_match.group(1).lower()
+        if scheme not in ("http", "https"):
+            return False, f"Unsupported URL scheme '{scheme}'. Only HTTP and HTTPS schemes are supported."
+
+    # Safely parse URL structure to verify non-empty host
+    parsed = safe_parse_url(cleaned)
+    if not parsed.netloc:
+        return False, "Missing host or domain name in URL."
+
+    # Verify that the host contains a period, port colon, or localhost
+    if "." not in parsed.netloc and ":" not in parsed.netloc and "localhost" not in parsed.netloc.lower():
+        return False, "Missing top-level domain, port, or hostname structure."
+
     return True, "Valid"
 
 

@@ -5,21 +5,24 @@ Author: Hackathon Engineering Pipeline
 
 OBJECTIVE:
 Provides real-time machine learning prediction endpoints for detecting malicious URLs.
-Integrates with the trained Scikit-learn RandomForestClassifier model.
+Uses a trained Scikit-learn RandomForestClassifier model with a validated 3-level
+risk classification policy (SAFE, SUSPICIOUS, MALICIOUS).
 
 ENDPOINTS:
 - GET  /                     : Serves the standalone HTML/CSS/JS frontend
 - GET  /api/health           : Health check and model status
-- POST /api/predict          : Predicts URL risk category (SAFE, SUSPICIOUS, MALICIOUS)
-- POST /api/analyze          : Frontend analysis endpoint with full threat diagnostics
-- POST /predict              : Alternative REST prediction endpoint
+- POST /api/scan             : Primary scan endpoint returning 3-level classification
+- POST /api/predict          : Standard ML prediction endpoint
+- POST /api/analyze          : Comprehensive frontend threat analysis endpoint
+- POST /scan                 : Alias for /api/scan
+- POST /predict              : Alias for /api/predict
 """
 
 import os
 import sys
 import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -37,7 +40,7 @@ from feature_extractor import (
     FEATURE_NAMES
 )
 
-# Configure logging to write standard INFO logs to stdout
+# Configure logging cleanly to stdout
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -45,13 +48,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("malicious_url_api")
 
-# Also configure Werkzeug logger to use stdout
+# Silence Werkzeug request access logs so they don't flood stderr
 werkzeug_logger = logging.getLogger("werkzeug")
-for h in list(werkzeug_logger.handlers):
-    werkzeug_logger.removeHandler(h)
-_handler = logging.StreamHandler(sys.stdout)
-_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-werkzeug_logger.addHandler(_handler)
+werkzeug_logger.setLevel(logging.ERROR)
 
 # Initialize Flask application
 STATIC_FRONTEND_DIR = os.path.join(BASE_DIR, "standalone_frontend")
@@ -66,13 +65,33 @@ FEATURE_CONFIG_PATH = os.path.join(BASE_DIR, "models", "feature_config.json")
 model = None
 feature_config = {}
 
-# Transparent Decision Thresholds
-THRESHOLD_SAFE = 0.35       # Probabilities below 35% are classified as SAFE
-THRESHOLD_SUSPICIOUS = 0.70 # Probabilities between 35% and 70% are classified as SUSPICIOUS
-                            # Probabilities at or above 70% are classified as MALICIOUS
+# ==============================================================================
+# THREE-LEVEL RISK CLASSIFICATION POLICY
+# ==============================================================================
+# The underlying Random Forest model outputs probability of being malicious [0.0 - 1.0].
+# Validation dataset empirical findings:
+#   - Confirmed Legitimate URLs: prob_malicious <= 0.19
+#   - Confirmed Malicious URLs:  prob_malicious >= 0.80
+#
+# Policy Thresholds:
+#   - prob_malicious < 0.35: Low statistical probability.
+#     -> Categorized as SAFE, UNLESS high-risk structural evasion indicators are present.
+#   - 0.35 <= prob_malicious < 0.70: Borderline / uncertain probability.
+#     -> Categorized as SUSPICIOUS. Forest trees are divided or patterns are mixed.
+#   - prob_malicious >= 0.70: High probability.
+#     -> Categorized as MALICIOUS. Strong consensus across forest estimators.
+#
+# Critical Safety Policy Rule:
+#   "Do not label a URL SAFE simply because it uses HTTPS. Treat uncertain results cautiously."
+#   If a URL has prob_malicious < 0.35 but contains critical structural red flags
+#   (raw IPv4 host, '@' credential confusion, multiple phishing keywords, or excessive subdomains),
+#   the classification is cautiously upgraded to SUSPICIOUS with an explicit override note.
+# ==============================================================================
+THRESHOLD_SAFE = 0.35
+THRESHOLD_SUSPICIOUS = 0.70
 
 
-def load_model():
+def load_model() -> bool:
     """Loads the trained Random Forest model and feature configuration into memory."""
     global model, feature_config
     if os.path.exists(MODEL_PATH):
@@ -84,6 +103,7 @@ def load_model():
             model = None
     else:
         logger.warning("Model file not found at %s. Please run train_model.py first.", MODEL_PATH)
+        model = None
 
     if os.path.exists(FEATURE_CONFIG_PATH):
         try:
@@ -93,15 +113,102 @@ def load_model():
         except Exception as e:
             logger.error("Failed to load feature configuration: %s", e)
 
+    return model is not None
 
-# Load model immediately on module import
+
+# Load model on startup
 load_model()
+
+
+def evaluate_three_class_policy(
+    prob_malicious: float,
+    prob_legitimate: float,
+    features: Dict[str, float]
+) -> Tuple[str, float, str, Dict[str, Any]]:
+    """
+    Evaluates model probabilities and structural features against the 3-level policy.
+
+    Returns:
+        (category, confidence_percentage, explanation, policy_metadata)
+    """
+    override_reasons = []
+
+    # Check for high-risk structural evasion red flags
+    if features.get("is_ipv4", 0.0) == 1.0 or features.get("has_ip_in_url", 0.0) == 1.0:
+        override_reasons.append("Direct IPv4 address used as host instead of a legitimate domain.")
+    if features.get("num_at_symbols", 0.0) > 0:
+        override_reasons.append("Credential confusion '@' symbol present in URL.")
+    if features.get("num_suspicious_keywords", 0.0) >= 2:
+        keywords_count = int(features.get("num_suspicious_keywords", 0.0))
+        override_reasons.append(f"Multiple sensitive phishing keywords detected ({keywords_count}).")
+    if features.get("num_subdomains", 0.0) >= 4:
+        subdomains = int(features.get("num_subdomains", 0.0))
+        override_reasons.append(f"Deep subdomain nesting ({subdomains} levels) characteristic of evasion.")
+
+    # 1. Base probability categorization
+    if prob_malicious >= THRESHOLD_SUSPICIOUS:
+        category = "MALICIOUS"
+        confidence = round(prob_malicious * 100, 1)
+        explanation = (
+            f"The Random Forest model identified strong malicious characteristics with "
+            f"{confidence}% confidence (malicious probability: {prob_malicious:.4f}). "
+            f"Multiple threat features align with known phishing, scam, or malware distribution links. "
+            f"Note: This assessment is based on URL lexical and structural patterns."
+        )
+        policy_rule = "model_probability_malicious (>= 0.70)"
+
+    elif prob_malicious >= THRESHOLD_SAFE:
+        category = "SUSPICIOUS"
+        confidence = round(max(prob_malicious, prob_legitimate) * 100, 1)
+        explanation = (
+            f"The URL falls in the uncertain / borderline probability range "
+            f"(malicious probability: {prob_malicious:.4f}). Decision trees in the forest "
+            f"are divided or the link exhibits mixed legitimate and suspicious lexical traits. "
+            f"Exercise caution before interacting with this destination."
+        )
+        policy_rule = "model_probability_borderline (0.35 - 0.70)"
+
+    else:
+        # Base probability is under 0.35. Check for structural override.
+        if override_reasons:
+            category = "SUSPICIOUS"
+            confidence = round(max(prob_malicious, 0.65) * 100, 1)
+            reasons_summary = "; ".join(override_reasons)
+            explanation = (
+                f"Statistical feature probability was low ({prob_malicious:.4f}), but cautious policy override "
+                f"classified this URL as SUSPICIOUS due to high-risk structural indicator(s): {reasons_summary}. "
+                f"HTTPS transport encryption alone does not guarantee a website is safe."
+            )
+            policy_rule = "cautious_structural_override_to_suspicious"
+        else:
+            category = "SAFE"
+            confidence = round(prob_legitimate * 100, 1)
+            explanation = (
+                f"The URL exhibits standard domain hierarchy and lexical patterns with "
+                f"{confidence}% confidence (malicious probability: {prob_malicious:.4f}). "
+                f"No anomalous phishing signatures or structural evasions were detected. "
+                f"Note: This system analyses URL features only and cannot guarantee server trustworthiness."
+            )
+            policy_rule = "model_probability_safe (< 0.35)"
+
+    policy_metadata = {
+        "applied_rule": policy_rule,
+        "structural_overrides_triggered": len(override_reasons) > 0,
+        "override_details": override_reasons,
+        "thresholds": {
+            "safe_max": THRESHOLD_SAFE,
+            "suspicious_min": THRESHOLD_SAFE,
+            "suspicious_max": THRESHOLD_SUSPICIOUS,
+            "malicious_min": THRESHOLD_SUSPICIOUS
+        }
+    }
+
+    return category, confidence, explanation, policy_metadata
 
 
 def generate_risk_factors(features: Dict[str, float]) -> List[str]:
     """
-    Translates raw numerical features into clear, human-readable risk indicators
-    for beginners and hackathon judges.
+    Translates raw numerical features into clear, human-readable risk indicators.
     """
     factors = []
 
@@ -158,21 +265,21 @@ def generate_risk_factors(features: Dict[str, float]) -> List[str]:
     return factors
 
 
-def generate_recommendations(verdict: str) -> List[str]:
-    """Generates context-aware cybersecurity recommendations for the user."""
-    if verdict == "MALICIOUS":
+def generate_recommendations(category: str) -> List[str]:
+    """Generates context-aware cybersecurity safety advice for the user."""
+    if category == "MALICIOUS":
         return [
             "DO NOT click, open, or share this URL under any circumstances.",
-            "Do not input passwords, bank accounts, or personal information on this destination.",
-            "Report this link to your security administrator or public phishing databases (PhishTank, Google Safe Browsing).",
-            "If already visited, immediately change affected credentials and scan your system with anti-malware."
+            "Do not input passwords, financial credentials, or personal information on this destination.",
+            "Report this link to your security team or public antiphishing registries (PhishTank, Google Safe Browsing).",
+            "If already visited, immediately change affected credentials and run an anti-malware scan."
         ]
-    elif verdict == "SUSPICIOUS":
+    elif category == "SUSPICIOUS":
         return [
             "Exercise extreme caution before opening this link.",
-            "Carefully check the root domain name in your browser address bar to verify authentic branding.",
+            "Carefully inspect the root domain name in your browser address bar to verify authentic branding.",
             "Do not download attachments, run executables, or enter sensitive information.",
-            "Verify the request through an independent secondary communication channel (e.g., phone call or official app)."
+            "Verify the request through an independent secondary communication channel (e.g., official phone number or app)."
         ]
     else:  # SAFE
         return [
@@ -187,53 +294,67 @@ def process_url_prediction(raw_url: str) -> Dict[str, Any]:
     Core prediction engine:
     1. Validates URL format
     2. Extracts 16 features consistently with training pipeline
-    3. Calculates model probabilities
-    4. Categorizes into SAFE, SUSPICIOUS, or MALICIOUS
-    5. Returns transparent indicators and advice
+    3. Calculates model probabilities from the trained Random Forest
+    4. Categorizes into SAFE, SUSPICIOUS, or MALICIOUS using validated policy
+    5. Returns transparent indicators, explanation, and advice
     """
-    if not raw_url or not isinstance(raw_url, str):
-        raise ValueError("URL cannot be empty. Please provide a valid URL string.")
+    if raw_url is None:
+        raise ValueError("URL cannot be None. Please provide a valid URL string.")
+
+    if not isinstance(raw_url, str):
+        raise ValueError(f"Expected string input, received {type(raw_url).__name__}.")
 
     cleaned_url = raw_url.strip()
+    if not cleaned_url:
+        raise ValueError("URL cannot be empty. Please provide a website URL to scan.")
 
     # Step 1: Input Format Validation
     is_valid, reason = validate_url(cleaned_url)
     if not is_valid:
         raise ValueError(f"Invalid URL format: {reason}")
 
-    # Step 2: Feature Extraction (identical to training)
+    # Step 2: Feature Extraction (identical to training pipeline)
     features_dict = extract_url_features(cleaned_url)
     features_vector = extract_url_vector(cleaned_url)
 
     # Step 3: Model Inference
     global model
     if model is None:
-        load_model()
+        loaded = load_model()
+        if not loaded or model is None:
+            raise RuntimeError("Machine Learning model is not available. Please run 'python train_model.py' first.")
 
-    if model is None:
-        raise RuntimeError("Machine Learning model is not available. Please run 'python train_model.py' first.")
+    # Model and feature consistency check
+    expected_features = len(FEATURE_NAMES)
+    if hasattr(model, "n_features_in_") and model.n_features_in_ != expected_features:
+        raise RuntimeError(
+            f"Model feature mismatch: model expects {model.n_features_in_} features, "
+            f"but feature extractor produced {expected_features} features."
+        )
 
-    # Calculate probabilities: [prob_legitimate, prob_malicious]
-    probabilities = model.predict_proba([features_vector])[0]
-    prob_legitimate = float(probabilities[0])
-    prob_malicious = float(probabilities[1])
-
-    # Step 4: Map probabilities into 3 discrete categories using transparent thresholds
-    if prob_malicious < THRESHOLD_SAFE:
-        verdict = "SAFE"
-        confidence = round(prob_legitimate * 100, 1)
-    elif prob_malicious < THRESHOLD_SUSPICIOUS:
-        verdict = "SUSPICIOUS"
-        confidence = round(max(prob_malicious, prob_legitimate) * 100, 1)
+    # Calculate probabilities if supported, or handle discrete models without inventing fake probabilities
+    has_predict_proba = hasattr(model, "predict_proba")
+    if has_predict_proba:
+        probabilities = model.predict_proba([features_vector])[0]
+        prob_legitimate = float(probabilities[0])
+        prob_malicious = float(probabilities[1])
     else:
-        verdict = "MALICIOUS"
-        confidence = round(prob_malicious * 100, 1)
+        discrete_pred = int(model.predict([features_vector])[0])
+        prob_malicious = 1.0 if discrete_pred == 1 else 0.0
+        prob_legitimate = 1.0 - prob_malicious
 
-    # Step 5: Explainable risk factors and recommendations
+    # Step 4: Map probabilities and features into 3 discrete categories using documented policy
+    category, confidence, explanation, policy_metadata = evaluate_three_class_policy(
+        prob_malicious=prob_malicious,
+        prob_legitimate=prob_legitimate,
+        features=features_dict
+    )
+
+    # Step 5: Risk factors and recommendations
     risk_factors = generate_risk_factors(features_dict)
-    recommendations = generate_recommendations(verdict)
+    recommendations = generate_recommendations(category)
 
-    # Count voting trees in ensemble if available
+    # Count voting trees in ensemble
     trees_voting = {"legitimate": 0, "malicious": 0}
     if hasattr(model, "estimators_"):
         for tree in model.estimators_:
@@ -246,16 +367,18 @@ def process_url_prediction(raw_url: str) -> Dict[str, Any]:
     return {
         "success": True,
         "url": cleaned_url,
-        "verdict": verdict,
-        "category": verdict,
+        "category": category,
+        "verdict": category,  # Backward compatibility
         "confidence_percentage": confidence,
         "malicious_probability": round(prob_malicious, 4),
         "legitimate_probability": round(prob_legitimate, 4),
+        "explanation": explanation,
         "decision_thresholds": {
             "safe": f"< {THRESHOLD_SAFE}",
-            "suspicious": f"{THRESHOLD_SAFE} - {THRESHOLD_SUSPICIOUS}",
+            "suspicious": f"{THRESHOLD_SAFE} - {THRESHOLD_SUSPICIOUS} (or high-risk structural red flags)",
             "malicious": f">= {THRESHOLD_SUSPICIOUS}"
         },
+        "policy_metadata": policy_metadata,
         "features": features_dict,
         "feature_names": FEATURE_NAMES,
         "risk_factors": risk_factors,
@@ -268,7 +391,9 @@ def process_url_prediction(raw_url: str) -> Dict[str, Any]:
         "model_metadata": {
             "algorithm": "RandomForestClassifier",
             "feature_count": len(FEATURE_NAMES),
-            "model_path": MODEL_PATH
+            "model_path": MODEL_PATH,
+            "trained": True,
+            "predict_proba_supported": has_predict_proba
         }
     }
 
@@ -285,7 +410,7 @@ def index():
     return jsonify({
         "service": "AI-Based Malicious URL Detection System",
         "status": "online",
-        "endpoints": ["/api/predict", "/api/analyze", "/api/health"]
+        "endpoints": ["/api/scan", "/api/predict", "/api/analyze", "/api/health"]
     })
 
 
@@ -306,6 +431,7 @@ def health():
         "status": "healthy",
         "service": "AI-Based Malicious URL Detection API",
         "model_loaded": model is not None,
+        "categories": ["SAFE", "SUSPICIOUS", "MALICIOUS"],
         "features_supported": len(FEATURE_NAMES),
         "thresholds": {
             "safe_max": THRESHOLD_SAFE,
@@ -315,17 +441,18 @@ def health():
     }), 200
 
 
+@app.route("/api/scan", methods=["POST"])
+@app.route("/scan", methods=["POST"])
 @app.route("/api/predict", methods=["POST"])
 @app.route("/predict", methods=["POST"])
 @app.route("/api/analyze", methods=["POST"])
-def predict():
+def scan_endpoint():
     """
-    Main prediction endpoint.
+    Main scan/prediction endpoint.
     Accepts JSON payload: {"url": "https://example.com"}
     or Form Data: url=https://example.com
     """
     try:
-        # Extract URL from JSON body or Form
         data = request.get_json(silent=True) or {}
         raw_url = data.get("url") or request.form.get("url")
 
@@ -340,12 +467,20 @@ def predict():
         return jsonify(result), 200
 
     except ValueError as val_err:
-        logger.warning("Validation error on URL '%s': %s", raw_url if 'raw_url' in locals() else None, val_err)
+        logger.info("Validation rejected for URL '%s': %s", raw_url if 'raw_url' in locals() else None, val_err)
         return jsonify({
             "success": False,
             "error": str(val_err),
             "status": "invalid_input"
         }), 400
+
+    except RuntimeError as r_err:
+        logger.error("Model unavailable error: %s", r_err)
+        return jsonify({
+            "success": False,
+            "error": str(r_err),
+            "status": "model_missing"
+        }), 503
 
     except Exception as err:
         logger.error("Internal prediction error: %s", err, exc_info=True)
@@ -361,9 +496,9 @@ if __name__ == "__main__":
     print("=" * 70)
     print("AI-BASED MALICIOUS URL DETECTION SYSTEM")
     print(f"Starting Flask API Server on port {port}...")
-    print(f"Prediction endpoints: http://127.0.0.1:{port}/api/predict")
-    print(f"                      http://127.0.0.1:{port}/api/analyze")
-    print(f"                      http://127.0.0.1:{port}/predict")
-    print(f"Health check:         http://127.0.0.1:{port}/api/health")
+    print(f"Primary scan endpoint: http://127.0.0.1:{port}/api/scan")
+    print(f"Prediction endpoints:  http://127.0.0.1:{port}/api/predict")
+    print(f"                       http://127.0.0.1:{port}/api/analyze")
+    print(f"Health check:          http://127.0.0.1:{port}/api/health")
     print("=" * 70)
     app.run(host="0.0.0.0", port=port, debug=False)

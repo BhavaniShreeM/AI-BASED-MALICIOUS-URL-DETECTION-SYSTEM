@@ -53,6 +53,7 @@ interface ScanResult {
   url: string;
   verdict: 'SAFE' | 'SUSPICIOUS' | 'MALICIOUS';
   confidenceText: string;
+  explanation?: string;
   maliciousProbability?: number;
   legitimateProbability?: number;
   confidencePercentage?: number;
@@ -73,7 +74,7 @@ export default function App() {
   const [selectedCodeFile, setSelectedCodeFile] = useState<'html' | 'css' | 'js'>('html');
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
-  // Initial scan on load for instant demonstration
+  // Initial scan on load
   useEffect(() => {
     executeScan('http://192.168.1.104/paypal.com/login.php');
   }, []);
@@ -86,10 +87,16 @@ export default function App() {
     if (trimmed.length < 3) {
       return { isValid: false, error: 'URL is too short to be evaluated.' };
     }
-    if (!trimmed.includes('.') && !trimmed.includes(':')) {
+    if (!trimmed.includes('.') && !trimmed.includes(':') && !trimmed.toLowerCase().includes('localhost')) {
       return {
         isValid: false,
         error: 'Invalid format: A valid URL must contain a domain (e.g. example.com) or an IP address.',
+      };
+    }
+    if (/\s/.test(trimmed)) {
+      return {
+        isValid: false,
+        error: 'Invalid format: URLs cannot contain whitespace characters.',
       };
     }
     return { isValid: true };
@@ -111,14 +118,27 @@ export default function App() {
     setValidationError(null);
 
     try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({ url: rawUrl }),
-      });
+      let response;
+      try {
+        response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ url: rawUrl }),
+        });
+      } catch {
+        // Fallback to /api/analyze
+        response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ url: rawUrl }),
+        });
+      }
 
       if (response.status === 400) {
         const errData = await response.json().catch(() => ({}));
@@ -127,16 +147,24 @@ export default function App() {
         return;
       }
 
+      if (response.status === 503) {
+        const errData = await response.json().catch(() => ({}));
+        setValidationError(errData.error || 'Machine Learning model unavailable. Please run train_model.py.');
+        setIsLoading(false);
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(`Server returned HTTP ${response.status}`);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned HTTP ${response.status}`);
       }
 
       const data = await response.json();
 
       const indicators: RiskIndicator[] = (data.risk_factors || []).map((factor: any, idx: number) => {
         if (typeof factor === 'string') {
-          const isDanger = data.verdict === 'MALICIOUS';
-          const isWarning = data.verdict === 'SUSPICIOUS';
+          const isDanger = (data.category || data.verdict) === 'MALICIOUS';
+          const isWarning = (data.category || data.verdict) === 'SUSPICIOUS';
           return {
             id: `factor-${idx}`,
             title: factor.includes('IPv4') || factor.includes('IP address')
@@ -180,8 +208,9 @@ export default function App() {
 
       setResult({
         url: data.url || rawUrl,
-        verdict: data.verdict,
+        verdict: (data.category || data.verdict) as 'SAFE' | 'SUSPICIOUS' | 'MALICIOUS',
         confidenceText: `${data.confidence_percentage}% Confidence (Random Forest)`,
+        explanation: data.explanation,
         maliciousProbability: data.malicious_probability,
         legitimateProbability: data.legitimate_probability,
         confidencePercentage: data.confidence_percentage,
@@ -192,9 +221,9 @@ export default function App() {
         consensus: data.ensemble_consensus,
         scannedAt: new Date().toLocaleTimeString(),
       });
-    } catch (apiErr) {
-      console.warn('API error, executing client-side heuristic fallback:', apiErr);
-      runLocalFallback(rawUrl);
+    } catch (apiErr: any) {
+      console.warn('API error communicating with Flask backend:', apiErr);
+      setValidationError(`Backend connection failed: ${apiErr.message || 'Service unreachable'}. Please verify Flask is running on port 5000.`);
     } finally {
       setIsLoading(false);
     }
@@ -388,7 +417,6 @@ export default function App() {
   const handleSelectSample = (url: string) => {
     setUrlInput(url);
     setValidationError(null);
-    executeScan(url);
   };
 
   return (
@@ -617,7 +645,8 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">
-                      This URL adheres to standard domain registration conventions, clean lexical distributions, and contains no recognized phishing or credential evasion signatures.
+                      {result.explanation ||
+                        'This URL adheres to standard domain registration conventions, clean lexical distributions, and contains no recognized phishing or credential evasion signatures.'}
                     </p>
                   </div>
                 )}
@@ -642,7 +671,8 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">
-                      This link contains warning traits such as a link shortener, high-abuse TLD, multiple hyphens, or deep subdomains. High caution is advised; never enter passwords or sensitive payment info.
+                      {result.explanation ||
+                        'This link contains warning traits such as a link shortener, high-abuse TLD, multiple hyphens, or deep subdomains. High caution is advised; never enter passwords or sensitive payment info.'}
                     </p>
                   </div>
                 )}
@@ -667,7 +697,8 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">
-                      Critical attack vectors identified (such as direct raw IP host routing, credential '@' obfuscation, path redirection, or deceptive banking mimicry). Do not visit or open this link.
+                      {result.explanation ||
+                        'Critical attack vectors identified (such as direct raw IP host routing, credential \'@\' obfuscation, path redirection, or deceptive banking mimicry). Do not visit or open this link.'}
                     </p>
                   </div>
                 )}

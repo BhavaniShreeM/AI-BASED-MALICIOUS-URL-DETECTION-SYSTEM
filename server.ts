@@ -32,16 +32,14 @@ function startFlaskBackend() {
 
   flaskProcess.stderr?.on('data', (data) => {
     const msg = data.toString().trim();
-    if (msg.includes('[INFO]') || msg.includes('HTTP/1.') || msg.includes(' 200 ') || msg.includes('Running on')) {
-      console.log(`[Flask] ${msg}`);
-    } else {
-      console.error(`[Flask] ${msg}`);
-    }
+    console.log(`[Flask] ${msg}`);
   });
 
   flaskProcess.on('exit', (code, signal) => {
-    console.warn(`[Flask] Process exited with code ${code}, signal ${signal}. Restarting in 2s...`);
-    setTimeout(startFlaskBackend, 2000);
+    if (code !== 0 && signal !== 'SIGTERM' && signal !== 'SIGINT') {
+      console.warn(`[Flask] Process exited with code ${code}, signal ${signal}. Restarting in 2s...`);
+      setTimeout(startFlaskBackend, 2000);
+    }
   });
 }
 
@@ -132,9 +130,11 @@ const proxyToFlask = async (req: Request, res: Response, targetPath: string) => 
 app.get('/api/health', (req, res) => proxyToFlask(req, res, '/api/health'));
 app.get('/health', (req, res) => proxyToFlask(req, res, '/health'));
 
+app.post('/api/scan', (req, res) => proxyToFlask(req, res, '/api/scan'));
+app.post('/scan', (req, res) => proxyToFlask(req, res, '/scan'));
 app.post('/api/predict', (req, res) => proxyToFlask(req, res, '/api/predict'));
-app.post('/api/analyze', (req, res) => proxyToFlask(req, res, '/api/analyze'));
 app.post('/predict', (req, res) => proxyToFlask(req, res, '/predict'));
+app.post('/api/analyze', (req, res) => proxyToFlask(req, res, '/api/analyze'));
 
 // Serve the Pure HTML/CSS/JS Standalone Frontend at /standalone
 const standalonePath = path.join(__dirname, 'standalone_frontend');

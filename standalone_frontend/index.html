@@ -106,16 +106,10 @@
         </svg>
       </div>
       <div class="notice-content">
-        <h4>Backend API Route Not Connected Yet (/api/analyze)</h4>
+        <h4>Backend Service Connection Notice</h4>
         <p id="apiNoticeMessage">
-          The frontend successfully attempted to connect to the backend server. As per your implementation schedule, the Machine Learning backend will be attached next. You can use the state preview buttons below to examine all frontend result cards.
+          Unable to establish communication with the Flask backend API at /api/scan. Please ensure the Python backend is active.
         </p>
-        <div class="preview-switcher">
-          <span>Preview UI Result Cards:</span>
-          <button type="button" id="previewSafeBtn" class="preview-btn safe">Preview Safe (Green)</button>
-          <button type="button" id="previewSuspiciousBtn" class="preview-btn suspicious">Preview Suspicious (Orange)</button>
-          <button type="button" id="previewMaliciousBtn" class="preview-btn malicious">Preview Malicious (Red)</button>
-        </div>
       </div>
     </div>
 

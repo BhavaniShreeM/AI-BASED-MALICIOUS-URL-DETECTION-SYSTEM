@@ -1,0 +1,6 @@
+{
+  "name": "AI-Based Malicious URL Detection System",
+  "description": "An intelligent cybersecurity application that inspects URLs, extracts 18 lexical and structural features, and classifies links into SAFE, SUSPICIOUS, or MALICIOUS using a trained Random Forest ML ensemble.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

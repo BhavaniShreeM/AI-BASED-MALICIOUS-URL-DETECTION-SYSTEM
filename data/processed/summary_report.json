@@ -1,0 +1,31 @@
+{
+  "total_raw_rows": 86,
+  "missing_url_count": 0,
+  "missing_label_count": 0,
+  "duplicate_urls_removed": 0,
+  "conflicting_label_urls_removed": 0,
+  "unmapped_labels_dropped": 0,
+  "unmapped_label_values": [],
+  "clean_sample_count": 86,
+  "class_distribution": {
+    "LEGITIMATE": 40,
+    "MALICIOUS": 46
+  },
+  "split_counts": {
+    "train": {
+      "total": 60,
+      "LEGITIMATE": 28,
+      "MALICIOUS": 32
+    },
+    "val": {
+      "total": 12,
+      "LEGITIMATE": 6,
+      "MALICIOUS": 6
+    },
+    "test": {
+      "total": 14,
+      "LEGITIMATE": 6,
+      "MALICIOUS": 8
+    }
+  }
+}

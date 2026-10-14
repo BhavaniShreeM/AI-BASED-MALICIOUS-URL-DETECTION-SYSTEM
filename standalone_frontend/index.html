@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI-Based Malicious URL Detection System</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Header Section -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">AI-Based Malicious URL Detection System</h1>
+          <p class="brand-subtitle">Intelligent URL Threat Analysis</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <span class="status-indicator"></span>
+        <span class="status-text">Frontend Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    <!-- URL Checker Input Section -->
+    <section class="scanner-card">
+      <div class="scanner-header">
+        <h2>Inspect Website Link</h2>
+        <p>Enter any website URL to extract threat vectors and classify risk.</p>
+      </div>
+
+      <form id="urlForm" class="scanner-form" novalidate>
+        <div class="input-wrapper">
+          <span class="input-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
+          <input
+            type="text"
+            id="urlInput"
+            name="url"
+            class="url-input"
+            placeholder="Enter website URL (e.g., https://example.com or suspicious link)..."
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+          <button type="button" id="clearBtn" class="clear-btn" aria-label="Clear input" style="display: none;">
+            &times;
+          </button>
+        </div>
+
+        <button type="submit" id="scanBtn" class="scan-button">
+          <span class="btn-text">Scan URL</span>
+          <span class="btn-spinner" style="display: none;"></span>
+        </button>
+      </form>
+
+      <!-- Input Validation Error Message -->
+      <div id="inputError" class="input-error-banner" style="display: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span id="errorText">Please enter a valid website URL.</span>
+      </div>
+
+      <!-- Quick Test Sample Chips for Hackathon Testing -->
+      <div class="sample-chips-row">
+        <span class="chips-label">Sample Links:</span>
+        <button type="button" class="sample-chip" data-url="https://www.google.com/search?q=cybersecurity">Clean Search</button>
+        <button type="button" class="sample-chip" data-url="http://bit.ly/3xY9PqL-security-notice">Shortened URL</button>
+        <button type="button" class="sample-chip" data-url="http://192.168.1.104/paypal.com/login.php">Direct IP Phishing</button>
+        <button type="button" class="sample-chip" data-url="https://paypal.com@verify-account-update.xyz/auth">Credential '@' Spoof</button>
+      </div>
+    </section>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading-container" style="display: none;">
+      <div class="spinner-pulse"></div>
+      <h3>Inspecting URL Threat Vectors...</h3>
+      <p class="loading-subtext">Extracting lexical structure, host attributes, and querying backend API...</p>
+    </div>
+
+    <!-- Backend Disconnected Notice (When API is not yet running) -->
+    <div id="apiNotice" class="api-notice-banner" style="display: none;">
+      <div class="notice-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+      </div>
+      <div class="notice-content">
+        <h4>Backend API Route Not Connected Yet (/api/analyze)</h4>
+        <p id="apiNoticeMessage">
+          The frontend successfully attempted to connect to the backend server. As per your implementation schedule, the Machine Learning backend will be attached next. You can use the state preview buttons below to examine all frontend result cards.
+        </p>
+        <div class="preview-switcher">
+          <span>Preview UI Result Cards:</span>
+          <button type="button" id="previewSafeBtn" class="preview-btn safe">Preview Safe (Green)</button>
+          <button type="button" id="previewSuspiciousBtn" class="preview-btn suspicious">Preview Suspicious (Orange)</button>
+          <button type="button" id="previewMaliciousBtn" class="preview-btn malicious">Preview Malicious (Red)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Section -->
+    <section id="resultsSection" class="results-container" style="display: none;">
+      <!-- Result Card: SAFE (Green) -->
+      <div id="safeCard" class="result-card safe-card" style="display: none;">
+        <div class="result-card-header">
+          <div class="verdict-badge">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+            <span class="verdict-label">SAFE</span>
+          </div>
+          <div class="verdict-meta">
+            <span class="confidence-tag">Standard Baseline Match</span>
+          </div>
+        </div>
+        <h3 class="verdict-heading">Low Threat Probability Detected</h3>
+        <p class="verdict-summary">
+          This URL adheres to standard domain hierarchies, normal character distributions, and contains no recognized phishing or credential evasion indicators.
+        </p>
+      </div>
+
+      <!-- Result Card: SUSPICIOUS (Yellow/Orange) -->
+      <div id="suspiciousCard" class="result-card suspicious-card" style="display: none;">
+        <div class="result-card-header">
+          <div class="verdict-badge">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span class="verdict-label">SUSPICIOUS</span>
+          </div>
+          <div class="verdict-meta">
+            <span class="confidence-tag">Proceed with Caution</span>
+          </div>
+        </div>
+        <h3 class="verdict-heading">Abnormal Patterns Detected</h3>
+        <p class="verdict-summary">
+          The link contains questionable traits such as a link shortener, high-abuse TLD, multiple hyphens, or excessive subdomains. Never enter confidential passwords or financial information.
+        </p>
+      </div>
+
+      <!-- Result Card: MALICIOUS (Red) -->
+      <div id="maliciousCard" class="result-card malicious-card" style="display: none;">
+        <div class="result-card-header">
+          <div class="verdict-badge">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span class="verdict-label">MALICIOUS</span>
+          </div>
+          <div class="verdict-meta">
+            <span class="confidence-tag alert">High Risk Threat</span>
+          </div>
+        </div>
+        <h3 class="verdict-heading">High Probability of Phishing or Fraud</h3>
+        <p class="verdict-summary">
+          Critical threat signatures were identified (such as raw IP address hosting, credential '@' obfuscation, path redirection, or deceptive banking keywords). Do not visit this site.
+        </p>
+      </div>
+
+      <!-- Analyzed URL Details Bar -->
+      <div class="inspected-url-bar">
+        <span class="url-label">Inspected URL:</span>
+        <code id="displayInspectedUrl" class="url-code">https://example.com</code>
+      </div>
+
+      <!-- Risk Indicators Section -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <h3>Detected Risk Indicators</h3>
+          <span id="riskCountBadge" class="panel-badge">0 Indicators</span>
+        </div>
+        <div id="riskIndicatorsList" class="indicators-grid">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+
+      <!-- Safety Recommendations Section -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <h3>Safety Recommendations</h3>
+          <span class="panel-badge-subtle">Defensive Security</span>
+        </div>
+        <div id="recommendationsList" class="recommendations-box">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Feature Information Section (Educational for Hackathon) -->
+    <section class="info-section">
+      <div class="info-card">
+        <div class="info-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 16v-4"></path>
+            <path d="M12 8h.01"></path>
+          </svg>
+        </div>
+        <div class="info-body">
+          <h3>How Machine Learning Detects Threat Links</h3>
+          <p>
+            Traditional security tools rely on static blocklists of known bad URLs, which cannot stop freshly registered zero-day attack links. Our system uses a <strong>Random Forest Classifier</strong> trained on thousands of confirmed legitimate and malicious URLs. The model evaluates structural patterns and probability distributions rather than relying on brittle keyword rules.
+          </p>
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="info-body">
+          <h3>URL Feature Extraction in Simple English</h3>
+          <p>
+            Before making a prediction, the application breaks down the URL string into mathematical measurements:
+          </p>
+          <ul class="feature-bullets">
+            <li><strong>URL & Domain Length:</strong> Phishers use long URLs to hide suspicious domains on mobile viewports.</li>
+            <li><strong>Special Characters:</strong> Counting periods (.), hyphens (-), and query parameters used for payload delivery.</li>
+            <li><strong>Credential Evasion (@):</strong> Browsers treat text before an '@' as login credentials and route to what follows.</li>
+            <li><strong>Raw IP Address:</strong> Attackers often deploy servers directly on IP numbers to bypass domain registration.</li>
+            <li><strong>Character Randomness (Entropy):</strong> Algorithms generate chaotic domain strings that exhibit high mathematical entropy.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer Section -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <strong>AI-Based Malicious URL Detection System</strong>
+        <span>·</span>
+        <span>College Hackathon Edition</span>
+      </div>
+      <p class="footer-disclaimer">
+        <strong>Disclaimer:</strong> Predictions generated by this system are based on statistical URL feature extraction and machine learning heuristics. They do not constitute a 100% security guarantee. Legitimate sites can be compromised, and HTTPS only encrypts communication—it does not certify a website is safe. Never interact with untrusted links.
+      </p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

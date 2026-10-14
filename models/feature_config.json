@@ -1,0 +1,31 @@
+{
+  "feature_names": [
+    "url_length",
+    "hostname_length",
+    "num_dots",
+    "num_hyphens",
+    "num_underscores",
+    "num_digits",
+    "num_special_chars",
+    "num_subdomains",
+    "is_ipv4",
+    "uses_https",
+    "has_ip_in_url",
+    "num_suspicious_keywords",
+    "num_path_segments",
+    "query_length",
+    "num_at_symbols",
+    "num_percent_encoded"
+  ],
+  "feature_count": 16,
+  "label_encoding": {
+    "LEGITIMATE": 0,
+    "MALICIOUS": 1
+  },
+  "reverse_label_encoding": {
+    "0": "LEGITIMATE",
+    "1": "MALICIOUS"
+  },
+  "extractor_module": "feature_extractor.py",
+  "created_at": "2026-10-14T07:25:55Z"
+}

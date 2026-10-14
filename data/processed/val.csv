@@ -1,0 +1,13 @@
+url,label
+http://amazon-account-billing-alert.work/verify,MALICIOUS
+https://www.stanford.edu/academics/,LEGITIMATE
+https://developer.mozilla.org/en-US/docs/Web/JavaScript,LEGITIMATE
+https://www.google.com/search?q=cybersecurity,LEGITIMATE
+http://192.168.1.104/paypal.com/webscr?cmd=_login-submit,MALICIOUS
+http://45.142.214.88:4444/payload.sh,MALICIOUS
+http://crypto-wallet-airdrop-claim.surf/connect,MALICIOUS
+http://steam-community-free-nitro-gift.trade/claim,MALICIOUS
+https://docs.docker.com/engine/install/ubuntu/,LEGITIMATE
+https://en.wikipedia.org/wiki/Random_forest,LEGITIMATE
+http://fedex-delivery-confirmation-code.rest/tracking,MALICIOUS
+https://www.ted.com/talks,LEGITIMATE

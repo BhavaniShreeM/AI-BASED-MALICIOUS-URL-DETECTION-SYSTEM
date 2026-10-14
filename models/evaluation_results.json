@@ -1,0 +1,133 @@
+{
+  "evaluation_timestamp": "2026-10-14T07:25:55Z",
+  "test_sample_count": 14,
+  "test_accuracy": 1.0,
+  "precision_malicious": 1.0,
+  "recall_malicious": 1.0,
+  "f1_score": 1.0,
+  "confusion_matrix": {
+    "true_negatives": 6,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "true_positives": 8,
+    "raw_matrix": [
+      [
+        6,
+        0
+      ],
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  "classification_report": {
+    "LEGITIMATE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 6
+    },
+    "MALICIOUS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 8
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 14
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 14
+    }
+  },
+  "feature_importance_ranking": [
+    {
+      "rank": 1,
+      "feature": "uses_https",
+      "importance": 0.455
+    },
+    {
+      "rank": 2,
+      "feature": "hostname_length",
+      "importance": 0.1334
+    },
+    {
+      "rank": 3,
+      "feature": "num_hyphens",
+      "importance": 0.1088
+    },
+    {
+      "rank": 4,
+      "feature": "num_suspicious_keywords",
+      "importance": 0.0737
+    },
+    {
+      "rank": 5,
+      "feature": "url_length",
+      "importance": 0.0618
+    },
+    {
+      "rank": 6,
+      "feature": "num_subdomains",
+      "importance": 0.0608
+    },
+    {
+      "rank": 7,
+      "feature": "num_special_chars",
+      "importance": 0.0292
+    },
+    {
+      "rank": 8,
+      "feature": "num_dots",
+      "importance": 0.0203
+    },
+    {
+      "rank": 9,
+      "feature": "is_ipv4",
+      "importance": 0.0149
+    },
+    {
+      "rank": 10,
+      "feature": "num_digits",
+      "importance": 0.0145
+    },
+    {
+      "rank": 11,
+      "feature": "has_ip_in_url",
+      "importance": 0.0129
+    },
+    {
+      "rank": 12,
+      "feature": "num_path_segments",
+      "importance": 0.0094
+    },
+    {
+      "rank": 13,
+      "feature": "num_at_symbols",
+      "importance": 0.0054
+    },
+    {
+      "rank": 14,
+      "feature": "num_percent_encoded",
+      "importance": 0.0
+    },
+    {
+      "rank": 15,
+      "feature": "query_length",
+      "importance": 0.0
+    },
+    {
+      "rank": 16,
+      "feature": "num_underscores",
+      "importance": 0.0
+    }
+  ]
+}

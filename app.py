@@ -37,9 +37,21 @@ from feature_extractor import (
     FEATURE_NAMES
 )
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# Configure logging to write standard INFO logs to stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    stream=sys.stdout
+)
 logger = logging.getLogger("malicious_url_api")
+
+# Also configure Werkzeug logger to use stdout
+werkzeug_logger = logging.getLogger("werkzeug")
+for h in list(werkzeug_logger.handlers):
+    werkzeug_logger.removeHandler(h)
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+werkzeug_logger.addHandler(_handler)
 
 # Initialize Flask application
 STATIC_FRONTEND_DIR = os.path.join(BASE_DIR, "standalone_frontend")

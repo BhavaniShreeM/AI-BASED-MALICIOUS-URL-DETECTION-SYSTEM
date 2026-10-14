@@ -31,7 +31,12 @@ function startFlaskBackend() {
   });
 
   flaskProcess.stderr?.on('data', (data) => {
-    console.error(`[Flask Error] ${data.toString().trim()}`);
+    const msg = data.toString().trim();
+    if (msg.includes('[INFO]') || msg.includes('HTTP/1.') || msg.includes(' 200 ') || msg.includes('Running on')) {
+      console.log(`[Flask] ${msg}`);
+    } else {
+      console.error(`[Flask] ${msg}`);
+    }
   });
 
   flaskProcess.on('exit', (code, signal) => {
